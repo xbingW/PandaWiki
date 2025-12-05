@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
-	"github.com/chaitin/pandawiki/sdk/rag"
 	raglite "github.com/chaitin/raglite-go-sdk"
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
@@ -49,16 +48,16 @@ func (s *CTRAG) CreateKnowledgeBase(ctx context.Context) (string, error) {
 }
 
 func (s *CTRAG) QueryRecords(ctx context.Context, req *QueryRecordsRequest) (string, []*domain.NodeContentChunk, error) {
-	var chatMsgs []rag.ChatMessage
+	var chatMsgs []raglite.ChatMessage
 	for _, msg := range req.HistoryMsgs {
 		switch msg.Role {
 		case schema.User:
-			chatMsgs = append(chatMsgs, rag.ChatMessage{
+			chatMsgs = append(chatMsgs, raglite.ChatMessage{
 				Role:    string(msg.Role),
 				Content: msg.Content,
 			})
 		case schema.Assistant:
-			chatMsgs = append(chatMsgs, rag.ChatMessage{
+			chatMsgs = append(chatMsgs, raglite.ChatMessage{
 				Role:    string(msg.Role),
 				Content: msg.Content,
 			})
@@ -74,6 +73,7 @@ func (s *CTRAG) QueryRecords(ctx context.Context, req *QueryRecordsRequest) (str
 		Metadata:            make(map[string]interface{}),
 		Tags:                make([]string, 0),
 		SimilarityThreshold: req.SimilarityThreshold,
+		ChatHistory:         chatMsgs,
 	}
 	if len(req.GroupIDs) > 0 {
 		data.Metadata["group_ids"] = req.GroupIDs
@@ -155,7 +155,7 @@ func (s *CTRAG) AddModel(ctx context.Context, model *domain.Model) (string, erro
 			MaxTokens:       raglite.Ptr(8192),
 			ExtraParameters: model.Parameters.Map(),
 		},
-		IsDefault: true,
+		IsDefault: model.IsActive,
 	})
 	if err != nil {
 		return "", err
@@ -240,22 +240,15 @@ func (s *CTRAG) ListDocuments(ctx context.Context, datasetID string, documentIDs
 	}
 	documents := make([]Document, len(res.Documents))
 	for i, document := range res.Documents {
-		doc := Document{
+		documents[i] = Document{
 			ID:          document.ID,
 			Name:        document.Filename,
 			DatasetID:   document.DatasetID,
 			Status:      document.Status,
 			ProgressMsg: document.ProgressMsg,
-			MetaData:    document.Metadata,
 			Tags:        document.Tags,
-			GroupIDs:    make([]int, 0),
+			MetaData:    raglite.Decode[DocumentMetadata](document.Metadata),
 		}
-		if document.Metadata != nil {
-			if groupIDs, ok := document.Metadata["group_ids"].([]int); ok {
-				doc.GroupIDs = groupIDs
-			}
-		}
-		documents[i] = doc
 	}
 	return documents, nil
 }
